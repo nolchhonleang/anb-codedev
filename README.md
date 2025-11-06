@@ -14,7 +14,7 @@
 [![Supabase](https://img.shields.io/badge/Supabase-181818?logo=supabase&logoColor=white)](https://supabase.com/)
 [![Shadcn/UI](https://img.shields.io/badge/Shadcn%2FUI-0.5-000000?logo=ui)](https://ui.shadcn.com/)
 
-[Live Demo](https://your-demo-url.com) • [Documentation](https://docs.your-site.com) • [Report Bug](https://github.com/yourusername/codedev-ai/issues) • [Request Feature](https://github.com/yourusername/codedev-ai/issues)
+[Live Demo](https://ab-codedev.netlify.app/dashboard) • [Documentation](https://docs.google.com/document/d/112GCslT27v2890jM9CZJ86_xI7sSsgatk2G6aSL9Vjw/edit?tab=t.0) 
 
 </div>
 
