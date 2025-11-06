@@ -190,17 +190,9 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 
 **Nol Chhonleang**
 
-- Portfolio: [Your Portfolio]
 - GitHub: [@nolchhonleang](https://github.com/nolchhonleang)
-- LinkedIn: [Your LinkedIn]
-- Email: your.email@example.com
+- Email: leang.codes@gmail.com
 
-## 🙏 Acknowledgments
-
-- Powered by [Lovable](https://lovable.dev) - The fastest way to build web apps
-- Icons by [Lucide](https://lucide.dev)
-- UI Components by [shadcn/ui](https://ui.shadcn.com)
-- AI Models by Google Gemini and OpenAI
 
 ## 📊 Project Stats
 
