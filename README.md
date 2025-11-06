@@ -100,8 +100,7 @@ Modern developers juggle multiple tools for different aspects of software develo
 
 ```bash
 # Clone the repository
-git clone <your-repo-url>
-cd a-b-codedev
+
 
 # Install dependencies
 npm install
