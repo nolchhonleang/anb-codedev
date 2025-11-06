@@ -1,0 +1,11 @@
+project_id = "iwvgfehzqtwumvpobrsy"
+
+[auth]
+site_url = "https://lovable.app"
+enabled = true
+
+[functions.ai-chat]
+verify_jwt = false
+
+[functions.run-code]
+verify_jwt = false

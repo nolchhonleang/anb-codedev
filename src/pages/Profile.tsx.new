@@ -1,0 +1,394 @@
+import { useState, useRef, useEffect } from 'react';
+import { useForm, Controller } from 'react-hook-form';
+import { z } from 'zod';
+import { zodResolver } from '@hookform/resolvers/zod';
+import { toast } from 'sonner';
+import { Camera, Save, Loader2 } from 'lucide-react';
+import { supabase } from '@/integrations/supabase/client';
+import { useAuth } from '@/contexts/AuthContext';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+
+// Language options
+const LANGUAGES = [
+  { value: 'en', label: 'English' },
+  { value: 'km', label: 'ភាសាខ្មែរ' },
+  { value: 'zh', label: '中文' }
+];
+
+// Form validation schema
+const profileSchema = z.object({
+  name: z.string().min(2, { message: 'Name must be at least 2 characters' }),
+  email: z.string().email({ message: 'Please enter a valid email address' }),
+  language: z.string(),
+  currentPassword: z.string().optional(),
+  newPassword: z.string().min(8, 'Password must be at least 8 characters').optional(),
+  confirmPassword: z.string().optional()
+}).refine((data) => !data.newPassword || data.newPassword === data.confirmPassword, {
+  message: "Passwords don't match",
+  path: ["confirmPassword"],
+});
+
+type ProfileFormValues = z.infer<typeof profileSchema>;
+
+const Profile = () => {
+  const { user, updateProfile } = useAuth();
+  const [isLoading, setIsLoading] = useState(false);
+  const [avatarPreview, setAvatarPreview] = useState('');
+  const [avatarFile, setAvatarFile] = useState<File | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // Initialize form with user data
+  const { 
+    control, 
+    handleSubmit, 
+    formState: { errors, isDirty }, 
+    reset, 
+    setValue,
+    watch 
+  } = useForm<ProfileFormValues>({
+    resolver: zodResolver(profileSchema),
+    defaultValues: {
+      name: user?.user_metadata?.full_name || user?.email?.split('@')[0] || '',
+      email: user?.email || '',
+      language: user?.user_metadata?.language || 'en',
+      currentPassword: '',
+      newPassword: '',
+      confirmPassword: ''
+    }
+  });
+
+  // Watch password fields to enable/disable save button
+  const currentPassword = watch('currentPassword');
+  const newPassword = watch('newPassword');
+  const confirmPassword = watch('confirmPassword');
+
+  // Get user initials for avatar fallback
+  const getUserInitials = (name?: string, email?: string) => {
+    if (name) {
+      return name
+        .split(' ')
+        .map((n) => n[0])
+        .join('')
+        .toUpperCase();
+    }
+    return email ? email[0].toUpperCase() : 'U';
+  };
+
+  // Handle file selection
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    if (file.size > 5 * 1024 * 1024) {
+      toast.error('File size should be less than 5MB');
+      return;
+    }
+
+    setAvatarFile(file);
+    setAvatarPreview(URL.createObjectURL(file));
+  };
+
+  // Set initial avatar preview
+  useEffect(() => {
+    if (user?.user_metadata?.avatar_url) {
+      setAvatarPreview(user.user_metadata.avatar_url);
+    }
+  }, [user]);
+
+  // Upload avatar to storage
+  const uploadAvatar = async (file: File, userId: string): Promise<string> => {
+    const fileExt = file.name.split('.').pop();
+    const fileName = `${userId}-${Math.random()}.${fileExt}`;
+    const filePath = `avatars/${fileName}`;
+
+    const { error: uploadError } = await supabase.storage
+      .from('avatars')
+      .upload(filePath, file, { upsert: true });
+
+    if (uploadError) throw uploadError;
+
+    // Get public URL
+    const { data: { publicUrl } } = supabase.storage
+      .from('avatars')
+      .getPublicUrl(filePath);
+
+    return publicUrl;
+  };
+
+  // Handle form submission
+  const onSubmit = async (data: ProfileFormValues) => {
+    try {
+      setIsLoading(true);
+      
+      // Update profile in Supabase
+      const updates: any = {
+        data: {
+          full_name: data.name,
+          language: data.language
+        }
+      };
+
+      // Upload avatar if selected
+      if (avatarFile && user?.id) {
+        const avatarUrl = await uploadAvatar(avatarFile, user.id);
+        updates.data.avatar_url = avatarUrl;
+        setAvatarPreview(avatarUrl);
+      }
+
+      // Update user data
+      const { error } = await supabase.auth.updateUser(updates);
+      if (error) throw error;
+
+      // Update password if new password is provided
+      if (data.newPassword && data.currentPassword) {
+        const { error: passwordError } = await supabase.auth.updateUser({
+          password: data.newPassword
+        });
+        
+        if (passwordError) throw passwordError;
+      }
+
+      // Refresh user data
+      const { data: { user: updatedUser } } = await supabase.auth.getUser();
+      if (updatedUser) {
+        updateProfile(updatedUser);
+      }
+
+      toast.success('Profile updated successfully');
+      reset({
+        ...data,
+        currentPassword: '',
+        newPassword: '',
+        confirmPassword: ''
+      });
+    } catch (error) {
+      console.error('Error updating profile:', error);
+      toast.error(error instanceof Error ? error.message : 'Failed to update profile');
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  // Show loading state while user data is being fetched
+  if (!user) {
+    return (
+      <div className="flex items-center justify-center min-h-screen">
+        <Loader2 className="w-8 h-8 animate-spin text-primary" />
+        <span className="ml-2">Loading profile...</span>
+      </div>
+    );
+  }
+
+  return (
+    <div className="container mx-auto py-8 px-4 max-w-3xl">
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-2xl font-bold">Profile Settings</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <form onSubmit={handleSubmit(onSubmit)} className="space-y-8">
+            {/* Avatar Upload */}
+            <div className="flex flex-col items-center space-y-4">
+              <div className="relative">
+                <Avatar className="w-24 h-24 border-2 border-primary/20">
+                  <AvatarImage src={avatarPreview} alt="Profile" />
+                  <AvatarFallback className="text-xl">
+                    {getUserInitials(
+                      user?.user_metadata?.full_name || user?.email?.split('@')[0],
+                      user?.email
+                    )}
+                  </AvatarFallback>
+                </Avatar>
+                <button
+                  type="button"
+                  onClick={() => fileInputRef.current?.click()}
+                  className="absolute -bottom-2 -right-2 bg-primary text-white p-2 rounded-full hover:bg-primary/90 transition-colors"
+                  aria-label="Change profile picture"
+                >
+                  <Camera className="w-4 h-4" />
+                  <input
+                    type="file"
+                    ref={fileInputRef}
+                    onChange={handleFileChange}
+                    accept="image/png, image/jpeg, image/jpg"
+                    className="hidden"
+                  />
+                </button>
+              </div>
+              <p className="text-sm text-muted-foreground text-center">
+                Click on the camera icon to change your profile picture (max 5MB)
+              </p>
+            </div>
+
+            <Tabs defaultValue="profile" className="w-full">
+              <TabsList className="grid w-full grid-cols-2">
+                <TabsTrigger value="profile">Profile</TabsTrigger>
+                <TabsTrigger value="password">Password</TabsTrigger>
+              </TabsList>
+
+              <TabsContent value="profile" className="space-y-6 pt-6">
+                <div className="space-y-4">
+                  <div>
+                    <Label htmlFor="name">Full Name</Label>
+                    <Controller
+                      name="name"
+                      control={control}
+                      render={({ field }) => (
+                        <Input
+                          id="name"
+                          placeholder="Enter your full name"
+                          {...field}
+                          className="mt-1"
+                        />
+                      )}
+                    />
+                    {errors.name && (
+                      <p className="text-sm text-red-500 mt-1">
+                        {errors.name.message}
+                      </p>
+                    )}
+                  </div>
+
+                  <div>
+                    <Label htmlFor="email">Email</Label>
+                    <Input
+                      id="email"
+                      type="email"
+                      value={user?.email || ''}
+                      disabled
+                      className="mt-1 bg-muted"
+                    />
+                    <p className="text-xs text-muted-foreground mt-1">
+                      Contact support to change your email address
+                    </p>
+                  </div>
+
+                  <div>
+                    <Label htmlFor="language">Preferred Language</Label>
+                    <Controller
+                      name="language"
+                      control={control}
+                      render={({ field }) => (
+                        <Select
+                          onValueChange={field.onChange}
+                          value={field.value}
+                        >
+                          <SelectTrigger className="mt-1">
+                            <SelectValue placeholder="Select language" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {LANGUAGES.map((lang) => (
+                              <SelectItem key={lang.value} value={lang.value}>
+                                {lang.label}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      )}
+                    />
+                  </div>
+                </div>
+              </TabsContent>
+
+              <TabsContent value="password" className="space-y-6 pt-6">
+                <div className="space-y-4">
+                  <div>
+                    <Label htmlFor="currentPassword">Current Password</Label>
+                    <Controller
+                      name="currentPassword"
+                      control={control}
+                      render={({ field }) => (
+                        <Input
+                          id="currentPassword"
+                          type="password"
+                          placeholder="Enter your current password"
+                          className="mt-1"
+                          {...field}
+                        />
+                      )}
+                    />
+                  </div>
+
+                  <div>
+                    <Label htmlFor="newPassword">New Password</Label>
+                    <Controller
+                      name="newPassword"
+                      control={control}
+                      render={({ field }) => (
+                        <Input
+                          id="newPassword"
+                          type="password"
+                          placeholder="Enter a new password"
+                          className="mt-1"
+                          {...field}
+                        />
+                      )}
+                    />
+                    {errors.newPassword && (
+                      <p className="text-sm text-red-500 mt-1">
+                        {errors.newPassword.message}
+                      </p>
+                    )}
+                    <p className="text-xs text-muted-foreground mt-1">
+                      Password must be at least 8 characters long
+                    </p>
+                  </div>
+
+                  <div>
+                    <Label htmlFor="confirmPassword">Confirm New Password</Label>
+                    <Controller
+                      name="confirmPassword"
+                      control={control}
+                      render={({ field }) => (
+                        <Input
+                          id="confirmPassword"
+                          type="password"
+                          placeholder="Confirm your new password"
+                          className="mt-1"
+                          {...field}
+                        />
+                      )}
+                    />
+                    {errors.confirmPassword && (
+                      <p className="text-sm text-red-500 mt-1">
+                        {errors.confirmPassword.message}
+                      </p>
+                    )}
+                  </div>
+                </div>
+              </TabsContent>
+            </Tabs>
+
+            <div className="flex justify-end pt-4 border-t">
+              <Button 
+                type="submit" 
+                disabled={isLoading || (!isDirty && !avatarFile && !newPassword)}
+                className="min-w-32"
+              >
+                {isLoading ? (
+                  <>
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    Saving...
+                  </>
+                ) : (
+                  <>
+                    <Save className="mr-2 h-4 w-4" />
+                    Save Changes
+                  </>
+                )}
+              </Button>
+            </div>
+          </form>
+        </CardContent>
+      </Card>
+    </div>
+  );
+};
+
+export default Profile;
